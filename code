@@ -1,0 +1,12 @@
+import pandas as pd, numpy as np
+
+df = pd.read_json('ecg_quality_features.jsonl', lines=True)
+split = pd.read_json('participant_split.json', typ='series')
+df['split'] = df['participant_id'].map(split)
+
+print(df.shape)                      # kỳ vọng (2000, 12)
+print(df.head())
+print(df.isna().sum())               # có giá trị thiếu không?
+print(df.describe())                 # min, max, trung bình từng cột
+print(df['split'].value_counts())    # kỳ vọng 1200 / 400 / 400
+print(df.groupby('split')['participant_id'].nunique())  # 30 / 10 / 10
