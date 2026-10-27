@@ -1,0 +1,12 @@
+feature_name,data_type,missing_count,missing_percentage,unique_values
+segment_id,str,0,0.0,2000
+participant_id,str,0,0.0,50
+device_id,str,0,0.0,2
+duration_s,int64,0,0.0,1
+missing_ratio,float64,0,0.0,1067
+baseline_variation_mv,float64,0,0.0,1582
+high_frequency_ratio,float64,0,0.0,1774
+clipping_ratio,float64,0,0.0,969
+amplitude_scale_mv,float64,0,0.0,1997
+review_note,str,0,0.0,2
+quality_label,int64,0,0.0,2
