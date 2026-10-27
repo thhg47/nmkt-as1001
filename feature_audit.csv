@@ -1,12 +1,13 @@
-feature_name,data_type,missing_count,missing_percentage,unique_values
-segment_id,str,0,0.0,2000
-participant_id,str,0,0.0,50
-device_id,str,0,0.0,2
-duration_s,int64,0,0.0,1
-missing_ratio,float64,0,0.0,1067
-baseline_variation_mv,float64,0,0.0,1582
-high_frequency_ratio,float64,0,0.0,1774
-clipping_ratio,float64,0,0.0,969
-amplitude_scale_mv,float64,0,0.0,1997
-review_note,str,0,0.0,2
-quality_label,int64,0,0.0,2
+feature,available_at_prediction,include,reason
+segment_id,yes,yes,Valid feature for modeling
+participant_id,yes,yes,Valid feature for modeling
+device_id,yes,yes,Valid feature for modeling
+duration_s,yes,yes,Valid feature for modeling
+missing_ratio,yes,yes,Valid feature for modeling
+baseline_variation_mv,yes,yes,Valid feature for modeling
+high_frequency_ratio,yes,yes,Valid feature for modeling
+clipping_ratio,yes,yes,Valid feature for modeling
+amplitude_scale_mv,yes,yes,Valid feature for modeling
+review_note,no,no,"Post-hoc label / Target variable, exclude to prevent leakage"
+quality_label,no,no,"Post-hoc label / Target variable, exclude to prevent leakage"
+split,yes,yes,Valid feature for modeling
