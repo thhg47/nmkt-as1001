@@ -111,13 +111,11 @@ def choose_threshold(y_true, y_prob, max_flag_rate=FLAG_RATE_CAP):
             best_threshold = float(threshold)
             best_flag_rate = flag_rate
 
-    # Match teammate 4's fallback:
-    # if no threshold satisfies the cap, choose the lowest flag rate.
     if best_threshold is None:
-        idx = int(np.argmin(flag_rates))
-        best_threshold = float(thresholds[idx])
-        min_cost = float(costs[idx])
-        best_flag_rate = float(flag_rates[idx])
+        raise ValueError(
+            "No threshold satisfies the flag-rate cap. "
+            "Do not silently select a threshold that violates the constraint."
+        )
 
     print(
         f"Optimal Threshold: {best_threshold:.2f} | "
@@ -302,13 +300,15 @@ def select_models(tr, va):
         "summary": forest_summary,
     })
 
-    # Lowest validation cost wins.
-    # Candidate order resolves model-cost ties.
+    # Lowest validation cost wins; then prefer lower workload and stable name/C order.
     selected = min(
         candidates,
-        key=lambda item: item["summary"][
-            "validation_cost_per_100"
-        ],
+        key=lambda item: (
+            item["summary"]["validation_cost_per_100"],
+            item["summary"]["validation_flag_rate"],
+            item["summary"]["name"],
+            item["summary"].get("C", float("inf")),
+        ),
     )
 
     selected_model = selected["model"]
@@ -323,9 +323,9 @@ def select_models(tr, va):
             "of 0.01. Predict class 1 when probability >= threshold. "
             "Minimize cost per 100 subject to flag rate <= the "
             "configured cap. Keep the first threshold in case of "
-            "a cost tie. If no threshold satisfies the cap, choose "
-            "the threshold with the lowest flag rate, matching "
-            "teammate 4."
+            "a threshold-cost tie. If model costs tie, prefer lower "
+            "flag rate, then model name and lower C. Raise an error "
+            "if no threshold satisfies the cap."
         ),
         "baseline": baseline_summary,
         "candidates": [
@@ -445,9 +445,9 @@ def write_freeze(cfg):
 - Thresholds are selected using validation data only.
 - Cost per 100 = 100 * (5 * FN + FP) / N.
 - Only thresholds with flag rate <= {FLAG_RATE_CAP:.2f} are feasible.
-- If no threshold satisfies the flag-rate cap, select the threshold with the lowest flag rate.
-- Threshold ties keep the first threshold encountered.
-- Model-cost ties are resolved by the fixed candidate order.
+- If no threshold satisfies the flag-rate cap, stop and resolve the constraint; do not silently violate it.
+- Threshold-cost ties keep the first threshold encountered.
+- Model-cost ties prefer lower flag rate, then model name and lower C.
 - The test set is not used for model or threshold selection.
 - Final test evaluation requires --final and a verified frozen selection.
 
