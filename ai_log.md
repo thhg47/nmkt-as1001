@@ -7,17 +7,17 @@ This document records the transparent usage of generative AI tools (such as Gemi
 ## 1. Ta Nguyen Minh Dang (ID: 2652430)
 * **Primary Focus:** Project workflow structuring, repository task distribution, and Git version control operations.
 * **Key Prompts & Inquiries:**
-* *“Hãy tóm tắt và đề ra các bước thực hiện bài tập này”(Cung cấp file data)"*
-* *“Phân tích các file cần làm theo nhiệm vụ phân công”(Cung cấp file và list chia việc)"*
-* *“File common và audit (.py) không phải chung 1 code mà phải tách riêng vì sao?”*
-* *“Dữ liệu trong file reaudit.py sao lại khác với file csv?”*
-* *"Làm thế nào để đảm bảo file feature_audit.csv có đúng 11 dòng và chính xác 6 dòng include=yes theo đúng checklist của nhóm test?"*
-* *"Có đúng yêu cầu không?" (Gửi ảnh màn hình console chạy để xác nhận kết quả output và bảng crosstab)."*
-* *"File common.py nó như vậy thì hãy làm cái file kia cho phù hợp..." (Cung cấp mã nguồn chuẩn để khớp code chính xác 100%)."*
-* *"Đúng yêu cầu này chưa..." (Đưa checklist phản hồi khắt khe của team test về 6 đặc trưng và yêu cầu sinh bảng tự động từ dữ liệu chứ không gõ tay)."*
-* *"Làm sao để đồng bộ hóa lại nhánh của mình khi bị tụt lại phía sau (behind) so với nhánh main của nhóm?"*
-* *"Cần dùng những câu lệnh Git nào để xóa các file rác/cũ và cập nhật code mới lên nhánh feature/data-audit?"*
-* *"Các bước chi tiết để bấm tạo Pull Request (PR) trực tiếp trên giao diện web của GitHub là gì để mọi người vào review?"*
+  * *“Hãy tóm tắt và đề ra các bước thực hiện bài tập này”(Cung cấp file data)"*
+  * *“Phân tích các file cần làm theo nhiệm vụ phân công”(Cung cấp file và list chia việc)"*
+  * *“File common và audit (.py) không phải chung 1 code mà phải tách riêng vì sao?”*
+  * *“Dữ liệu trong file reaudit.py sao lại khác với file csv?”*
+  * *"Làm thế nào để đảm bảo file feature_audit.csv có đúng 11 dòng và chính xác 6 dòng include=yes theo đúng checklist của nhóm test?"*
+  * *"Có đúng yêu cầu không?" (Gửi ảnh màn hình console chạy để xác nhận kết quả output và bảng crosstab)."*
+  * *"File common.py nó như vậy thì hãy làm cái file kia cho phù hợp..." (Cung cấp mã nguồn chuẩn để khớp code chính xác 100%)."*
+  * *"Đúng yêu cầu này chưa..." (Đưa checklist phản hồi khắt khe của team test về 6 đặc trưng và yêu cầu sinh bảng tự động từ dữ liệu chứ không gõ tay)."*
+  * *"Làm sao để đồng bộ hóa lại nhánh của mình khi bị tụt lại phía sau (behind) so với nhánh main của nhóm?"*
+  * *"Cần dùng những câu lệnh Git nào để xóa các file rác/cũ và cập nhật code mới lên nhánh feature/data-audit?"*
+  * *"Các bước chi tiết để bấm tạo Pull Request (PR) trực tiếp trên giao diện web của GitHub là gì để mọi người vào review?"*
 
 ---
 
