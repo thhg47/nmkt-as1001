@@ -47,7 +47,6 @@ def build_preprocessor():
 
 # ============================================================
 # 2. COST AND THRESHOLD LOGIC
-# Compatible with teammate 4's threshold-selection rules
 # ============================================================
 
 def cost_per_100(y_true, y_pred):
@@ -58,7 +57,9 @@ def cost_per_100(y_true, y_pred):
         raise ValueError("Cannot calculate cost on empty data.")
 
     if len(y_true) != len(y_pred):
-        raise ValueError("y_true and y_pred must have equal lengths.")
+        raise ValueError(
+            "y_true and y_pred must have equal lengths."
+        )
 
     tn, fp, fn, tp = confusion_matrix(
         y_true, y_pred, labels=[0, 1]
@@ -88,48 +89,63 @@ def choose_threshold(y_true, y_prob, max_flag_rate=FLAG_RATE_CAP):
     if not 0 <= max_flag_rate <= 1:
         raise ValueError("max_flag_rate must be between 0 and 1.")
 
+    # Thresholds: 0.01, 0.02, ..., 0.99
     thresholds = np.round(np.arange(0.01, 1.00, 0.01), 2)
-
-    best_threshold = None
-    min_cost = float("inf")
-    best_flag_rate = 0.0
 
     costs = []
     flag_rates = []
 
     for threshold in thresholds:
         y_pred = (y_prob >= threshold).astype(int)
+
         flag_rate = float(np.mean(y_pred))
         cost = cost_per_100(y_true, y_pred)
 
         costs.append(cost)
         flag_rates.append(flag_rate)
 
-        # Keep the first threshold if costs are tied.
-        if flag_rate <= max_flag_rate and cost < min_cost:
-            min_cost = cost
-            best_threshold = float(threshold)
-            best_flag_rate = flag_rate
+    # Find thresholds satisfying the flag-rate limit.
+    valid_indices = [
+        i for i, rate in enumerate(flag_rates)
+        if rate <= max_flag_rate
+    ]
 
-    # Match teammate 4's fallback:
-    # if no threshold satisfies the cap, choose the lowest flag rate.
-    if best_threshold is None:
-        idx = int(np.argmin(flag_rates))
-        best_threshold = float(thresholds[idx])
-        min_cost = float(costs[idx])
-        best_flag_rate = float(flag_rates[idx])
+    if valid_indices:
+        # Lowest cost wins.
+        # If costs tie, keep the first threshold encountered.
+        best_idx = min(
+            valid_indices,
+            key=lambda i: costs[i],
+        )
+    else:
+        # Fallback:
+        # lowest flag rate first, then lowest cost.
+        # If both tie, keep the first threshold encountered.
+        best_idx = min(
+            range(len(thresholds)),
+            key=lambda i: (flag_rates[i], costs[i]),
+        )
+
+        print(
+            "WARNING: No threshold satisfies the flag-rate cap. "
+            "Using the threshold with the lowest flag rate."
+        )
+
+    best_threshold = float(thresholds[best_idx])
+    best_cost = float(costs[best_idx])
+    best_flag_rate = float(flag_rates[best_idx])
 
     print(
         f"Optimal Threshold: {best_threshold:.2f} | "
-        f"Cost: {min_cost:.2f} | "
+        f"Cost per 100: {best_cost:.2f} | "
         f"Flag Rate: {best_flag_rate:.1%}"
     )
 
     return (
         best_threshold,
         thresholds,
-        np.array(costs),
-        np.array(flag_rates),
+        np.asarray(costs),
+        np.asarray(flag_rates),
     )
 
 
@@ -145,7 +161,9 @@ def summarize_model(name, model, threshold, va, c_value=None):
     result = {
         "name": name,
         "threshold": float(threshold),
-        "validation_cost_per_100": cost_per_100(y_true, y_pred),
+        "validation_cost_per_100": cost_per_100(
+            y_true, y_pred
+        ),
         "validation_flag_rate": float(np.mean(y_pred)),
     }
 
@@ -168,7 +186,7 @@ def select_models(tr, va):
             "Training and validation data cannot be empty."
         )
 
-    required_columns = FEATURES + [TARGET]
+    required_columns = list(FEATURES) + [TARGET]
 
     for name, frame in [
         ("training", tr),
@@ -178,7 +196,8 @@ def select_models(tr, va):
 
         if missing:
             raise ValueError(
-                f"{name} data are missing columns: {sorted(missing)}"
+                f"{name} data are missing columns: "
+                f"{sorted(missing)}"
             )
 
         if frame[required_columns].isna().any().any():
@@ -197,7 +216,10 @@ def select_models(tr, va):
     y_train = tr[TARGET].astype(int)
     y_val = va[TARGET].to_numpy(dtype=int)
 
-    # Baseline
+    # --------------------------------------------------------
+    # Baseline: DummyClassifier
+    # --------------------------------------------------------
+
     baseline = DummyClassifier(strategy="prior")
     baseline.fit(x_train, y_train)
 
@@ -220,7 +242,11 @@ def select_models(tr, va):
 
     candidates = []
 
-    # Logistic Regression: tune C on validation.
+    # --------------------------------------------------------
+    # Candidate 1: Logistic Regression
+    # Tune C using validation data.
+    # --------------------------------------------------------
+
     for c_value in LOGISTIC_C_VALUES:
         candidate = Pipeline(
             steps=[
@@ -262,7 +288,10 @@ def select_models(tr, va):
             "summary": summary,
         })
 
-    # Second candidate model: Random Forest.
+    # --------------------------------------------------------
+    # Candidate 2: Random Forest
+    # --------------------------------------------------------
+
     forest = Pipeline(
         steps=[
             ("preprocessor", build_preprocessor()),
@@ -302,8 +331,11 @@ def select_models(tr, va):
         "summary": forest_summary,
     })
 
-    # Lowest validation cost wins.
+    # --------------------------------------------------------
+    # Select candidate with the lowest validation cost.
     # Candidate order resolves model-cost ties.
+    # --------------------------------------------------------
+
     selected = min(
         candidates,
         key=lambda item: item["summary"][
@@ -320,12 +352,13 @@ def select_models(tr, va):
         "flag_rate_cap": float(FLAG_RATE_CAP),
         "selection_rule": (
             "Test thresholds from 0.01 to 0.99 in increments "
-            "of 0.01. Predict class 1 when probability >= threshold. "
-            "Minimize cost per 100 subject to flag rate <= the "
-            "configured cap. Keep the first threshold in case of "
-            "a cost tie. If no threshold satisfies the cap, choose "
-            "the threshold with the lowest flag rate, matching "
-            "teammate 4."
+            "of 0.01. Predict class 1 when probability >= "
+            "threshold. Minimize cost per 100 subject to flag "
+            "rate <= the configured cap. Keep the first "
+            "threshold in case of a cost tie. If no threshold "
+            "satisfies the cap, choose the lowest flag rate; "
+            "if flag rates tie, choose the lower cost. "
+            "Model-cost ties are resolved by candidate order."
         ),
         "baseline": baseline_summary,
         "candidates": [
@@ -360,8 +393,6 @@ def select_models(tr, va):
 def freeze_signature(cfg):
     selected = cfg["selected_model"]
 
-    # Only deterministic model-selection settings.
-    # Do not put timestamps, commit hashes or other manual notes here.
     return {
         "seed": cfg["seed"],
         "flag_rate_cap": cfg["flag_rate_cap"],
@@ -374,8 +405,7 @@ def freeze_signature(cfg):
 
 
 def write_freeze(cfg):
-    # Check BOTH paths before writing anything.
-    # Never overwrite the group's existing files.
+    # Never overwrite existing freeze files.
     existing = [
         path.name
         for path in (FREEZE_PATH, RECORD_PATH)
@@ -386,15 +416,13 @@ def write_freeze(cfg):
         raise FileExistsError(
             "Refusing to overwrite existing file(s): "
             + ", ".join(existing)
-            + ". Review or rename them with the group's agreement "
-              "before trying to freeze again."
+            + ". Review these files with the group before "
+              "trying to freeze again."
         )
 
     signature = freeze_signature(cfg)
     selected = cfg["selected_model"]
 
-    # JSON contains deterministic configuration only.
-    # No timestamp, commit hash, bootstrap result or manual notes.
     frozen = {
         "freeze_version": 1,
         "selection": signature,
@@ -414,8 +442,9 @@ def write_freeze(cfg):
             "constraint."
         )
 
-    # Timestamp is recorded ONLY in the generated Markdown record.
-    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    timestamp = datetime.now().astimezone().isoformat(
+        timespec="seconds"
+    )
 
     record = f"""# Model Freeze Record (Generated Draft)
 
@@ -433,8 +462,6 @@ def write_freeze(cfg):
 - Validation cost per 100: {selected['validation_cost_per_100']:.4f}
 - Validation flag rate: {selected['validation_flag_rate']:.4f}
 - Maximum flag rate: {FLAG_RATE_CAP:.2f}
-- Logistic Regression parameters: class_weight="balanced", max_iter=2000
-- Random Forest parameters: n_estimators=300, class_weight="balanced"
 
 ## Selection reason
 
@@ -445,7 +472,7 @@ def write_freeze(cfg):
 - Thresholds are selected using validation data only.
 - Cost per 100 = 100 * (5 * FN + FP) / N.
 - Only thresholds with flag rate <= {FLAG_RATE_CAP:.2f} are feasible.
-- If no threshold satisfies the flag-rate cap, select the threshold with the lowest flag rate.
+- If no threshold satisfies the cap, select the lowest flag rate, then the lower cost.
 - Threshold ties keep the first threshold encountered.
 - Model-cost ties are resolved by the fixed candidate order.
 - The test set is not used for model or threshold selection.
@@ -465,9 +492,7 @@ def write_freeze(cfg):
 - This is a generated draft. The group owner should review and merge it into the official freeze record.
 """
 
-    # Write JSON first, then the generated draft.
-    # If writing the draft fails, remove the newly created JSON.
-    # Existing files were checked above and are never overwritten.
+    # Write the JSON first.
     FREEZE_PATH.write_text(
         json.dumps(
             frozen,
@@ -486,7 +511,6 @@ def write_freeze(cfg):
 
     print(f"Saved frozen configuration: {FREEZE_PATH.name}")
     print(f"Saved generated draft: {RECORD_PATH.name}")
-    print("Timestamp is stored only in the generated Markdown draft.")
     print("Bootstrap, NA analysis and Git commit hash remain manual.")
     print(json.dumps(signature, indent=2, ensure_ascii=False))
 
@@ -521,7 +545,9 @@ def check_freeze(cfg):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Train, select, freeze and evaluate ECG quality models."
+        description=(
+            "Train, select, freeze and evaluate ECG quality models."
+        )
     )
 
     modes = parser.add_mutually_exclusive_group()
