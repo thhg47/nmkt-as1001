@@ -1,6 +1,6 @@
 # ECG Quality Assessment — Student Data Package
 
-All material is in English. Read `ecg_quality_student.tex` for the lesson and assessment brief. No worked solutions are included.
+All material is in English. Read `ecg_quality_student-2.pdf` for the lesson and assessment brief. No worked solutions are included.
 
 ## Files
 - `ecg_quality_features.jsonl`: 2,000 records, one JSON object per line.
@@ -8,7 +8,7 @@ All material is in English. Read `ecg_quality_student.tex` for the lesson and as
 - `data_dictionary.md`: variable definitions, provenance, and limitations.
 - `starter.py`: standard-library loader only; no completed analysis.
 - `submission_checklist.md`: required hand-in structure and file schemas.
-- `ecg_quality_student.tex`: standalone student handout; no external assets required.
+- `ecg_quality_student-2.pdf`: standalone student handout.
 
 ## Getting started
 Keep all files in one directory and run `python starter.py`. For analysis, use Python 3 with your chosen scientific libraries (for example NumPy, pandas, scikit-learn, and matplotlib), or an equivalent reproducible R workflow. Record the exact versions you actually use. No particular paid AI service is required.
@@ -18,7 +18,7 @@ To load a table with pandas, use `pd.read_json('ecg_quality_features.jsonl', lin
 ## Model training and evaluation
 Install the pinned dependencies with `python -m pip install -r requirements.txt`.
 
-`analysis.py` is the single supported training/evaluation entry point. The older `model_training.py` and separately supplied `model_training-4.py` are retained as reference drafts only; they are not supported workflows. The Logistic Regression configuration from the latter (`max_iter=2000`) is applied in `analysis.py`.
+`analysis.py` is the single supported training/evaluation entry point. The older `model_training.py` is retained as a reference draft only and is not a supported workflow. Its Logistic Regression configuration (`max_iter=2000`) is applied in `analysis.py`.
 
 Run the following commands from this directory:
 
