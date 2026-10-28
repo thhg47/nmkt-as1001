@@ -1,7 +1,9 @@
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import joblib
 import numpy as np
@@ -15,7 +17,6 @@ import evaluate
 import threshold
 from common import (
     CAT,
-    DATA_DIR,
     FEATURES,
     FLAG_RATE_CAP,
     NUM,
@@ -26,11 +27,13 @@ from common import (
 )
 
 
-OUTPUT_DIR = Path(__file__).resolve().parent / 'results'
-MODEL_PATH = OUTPUT_DIR / 'frozen_models.joblib'
-FREEZE_PATH = OUTPUT_DIR / 'freeze_record.json'
-FREEZE_MARKDOWN_PATH = OUTPUT_DIR / 'freeze_record.md'
+ROOT = Path(__file__).resolve().parent
+OUTPUT_DIR = ROOT / 'results'
+MODEL_PATH = ROOT / 'frozen_models.joblib'
+FREEZE_PATH = ROOT / 'freeze_record.json'
+FREEZE_MARKDOWN_PATH = ROOT / 'freeze_record.md'
 LOGISTIC_C_VALUES = (0.01, 0.1, 1.0, 10.0, 100.0)
+LOGISTIC_MAX_ITER = 2000
 
 
 class PriorModel:
@@ -60,7 +63,7 @@ def fit_candidates(train, validation):
             LogisticRegression(
                 C=c,
                 class_weight='balanced',
-                max_iter=1000,
+                max_iter=LOGISTIC_MAX_ITER,
                 random_state=SEED,
             ),
         )
@@ -103,8 +106,7 @@ def fit_candidates(train, validation):
     return baseline, scored[0], scored
 
 
-def develop():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+def select_from_validation():
     train, validation, _ = get_splits(load_data())
     baseline, selected, all_results = fit_candidates(train, validation)
     baseline_threshold = evaluate.select_threshold(
@@ -112,6 +114,14 @@ def develop():
         baseline.predict_proba(validation[FEATURES])[:, 1],
         FLAG_RATE_CAP,
     )['threshold']
+    return train, validation, baseline, selected, all_results, baseline_threshold
+
+
+def develop():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    train, validation, baseline, selected, all_results, baseline_threshold = (
+        select_from_validation()
+    )
 
     print(f'Train segments: {len(train)}; validation segments: {len(validation)}')
     print(f'Flag-rate cap: {FLAG_RATE_CAP:.0%}')
@@ -135,16 +145,59 @@ def develop():
         selected['threshold'],
         validation,
     )
+    print('Validation artifacts updated. No model or freeze record was written.')
 
-    joblib.dump({
-        'baseline': baseline,
-        'final_model': selected['model'],
-        'baseline_threshold': baseline_threshold,
-        'final_threshold': selected['threshold'],
-    }, MODEL_PATH)
 
+def model_configuration(name):
+    if name.startswith('logistic_regression_C='):
+        return {
+            'estimator': 'LogisticRegression',
+            'C': float(name.split('=', 1)[1]),
+            'class_weight': 'balanced',
+            'max_iter': LOGISTIC_MAX_ITER,
+            'random_state': SEED,
+            'solver': 'lbfgs',
+        }
+    if name == 'random_forest':
+        return {
+            'estimator': 'RandomForestClassifier',
+            'n_estimators': 300,
+            'class_weight': 'balanced',
+            'random_state': SEED,
+            'n_jobs': -1,
+        }
+    raise ValueError(f'Unknown candidate model: {name}')
+
+
+def write_freeze(
+    train,
+    baseline,
+    selected,
+    all_results,
+    baseline_threshold,
+):
+    paths = (MODEL_PATH, FREEZE_PATH, FREEZE_MARKDOWN_PATH)
+    existing = [path.name for path in paths if path.exists()]
+    if existing:
+        raise FileExistsError(
+            'Refusing to overwrite existing freeze artifact(s): '
+            + ', '.join(existing)
+        )
+
+    frozen_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    candidates = [
+        {
+            'model': result['name'],
+            'configuration': model_configuration(result['name']),
+            'threshold': float(result['threshold']),
+            'validation_cost_per_100': float(result['cost_per_100']),
+            'validation_flag_rate': float(result['flag_rate']),
+        }
+        for result in all_results
+    ]
     freeze = {
-        'frozen_at_utc': datetime.now(timezone.utc).isoformat(),
+        'status': 'group_approved_freeze',
+        'frozen_at_utc': frozen_at,
         'selection_split': 'validation',
         'test_opened': False,
         'threshold_rule': 'p_noisy >= threshold',
@@ -153,48 +206,85 @@ def develop():
         'features': FEATURES,
         'numeric_features': NUM,
         'categorical_features': CAT,
-        'preprocessing': 'StandardScaler for numeric; OneHotEncoder(handle_unknown=ignore) for device_id',
-        'selection_metric': 'thresholds 0.01..0.99 in 0.01 steps; minimize cost_per_100 subject to flag_rate <= flag_rate_cap; threshold ties keep first; model ties prefer lower flag rate then model name',
-        'candidates': [
-            {
-                'model': result['name'],
-                'threshold': result['threshold'],
-                'validation_cost_per_100': result['cost_per_100'],
-                'validation_flag_rate': result['flag_rate'],
-            }
-            for result in all_results
-        ],
+        'preprocessing': {
+            'numeric': 'StandardScaler',
+            'categorical': 'OneHotEncoder(handle_unknown=ignore)',
+        },
+        'baseline': {
+            'estimator': 'PriorModel',
+            'positive_rate': float(train[TARGET].mean()),
+            'threshold': float(baseline_threshold),
+        },
+        'selection_metric': (
+            'Threshold grid 0.01..0.99 by 0.01; minimize cost_per_100 '
+            'subject to flag_rate <= flag_rate_cap; threshold ties keep '
+            'the first ascending threshold; model ties prefer lower '
+            'flag rate, model name, then lower C.'
+        ),
+        'candidates': candidates,
         'selected_model': selected['name'],
-        'selected_threshold': selected['threshold'],
-        'selected_validation_cost_per_100': selected['cost_per_100'],
-        'selected_validation_flag_rate': selected['flag_rate'],
+        'selected_model_configuration': model_configuration(selected['name']),
+        'selected_threshold': float(selected['threshold']),
+        'selected_validation_cost_per_100': float(selected['cost_per_100']),
+        'selected_validation_flag_rate': float(selected['flag_rate']),
     }
-    FREEZE_PATH.write_text(json.dumps(freeze, indent=2) + '\n', encoding='utf-8')
+
     candidates_markdown = '\n'.join(
-        f"| {row['model']} | {row['threshold']:.6g} | "
+        f"| {row['model']} | `{json.dumps(row['configuration'], sort_keys=True)}` | "
+        f"{row['threshold']:.6g} | "
         f"{row['validation_cost_per_100']:.2f} | {row['validation_flag_rate']:.3f} |"
-        for row in freeze['candidates']
+        for row in candidates
     )
     freeze_markdown = f"""# Freeze record
 
-- Frozen at (UTC): {freeze['frozen_at_utc']}
+- Group approval: recorded by the explicit `--approve-freeze` command
+- Frozen at (UTC): {frozen_at}
 - Test evaluated before this record: no
-- Selected model: {freeze['selected_model']}
-- Selected threshold: {freeze['selected_threshold']:.6g}
+- Baseline: PriorModel using train-set positive rate; threshold {baseline_threshold:.6g}
+- Selected model: {selected['name']}
+- Selected model configuration: `{json.dumps(freeze['selected_model_configuration'], sort_keys=True)}`
+- Selected threshold: {selected['threshold']:.6g}
 - Threshold rule: `{freeze['threshold_rule']}`
-- Flag-rate cap: {freeze['flag_rate_cap']:.0%}
-- Features: {', '.join(freeze['features'])}
-- Numeric features: {', '.join(freeze['numeric_features'])}
-- Categorical features: {', '.join(freeze['categorical_features'])}
-- Preprocessing: {freeze['preprocessing']}
-- Random seed: {freeze['seed']}
+- Flag-rate cap: {FLAG_RATE_CAP:.0%}
+- Features: {', '.join(FEATURES)}
+- Numeric features: {', '.join(NUM)}
+- Categorical features: {', '.join(CAT)}
+- Preprocessing: StandardScaler for numeric; OneHotEncoder(handle_unknown=ignore) for categorical
+- Random seed: {SEED}
+- Logistic Regression candidates: C in {LOGISTIC_C_VALUES}, class_weight=balanced, max_iter={LOGISTIC_MAX_ITER}, random_state={SEED}, solver=lbfgs
+- Random Forest candidate: n_estimators=300, class_weight=balanced, random_state={SEED}, n_jobs=-1
 - Selection rule: {freeze['selection_metric']}
 
-| Candidate | Validation threshold | Validation cost/100 | Validation flag rate |
-|---|---:|---:|---:|
+| Candidate | Configuration | Validation threshold | Validation cost/100 | Validation flag rate |
+|---|---|---:|---:|---:|
 {candidates_markdown}
 """
-    FREEZE_MARKDOWN_PATH.write_text(freeze_markdown, encoding='utf-8')
+
+    with TemporaryDirectory(dir=ROOT) as temp_dir:
+        temp = Path(temp_dir)
+        staged_model = temp / MODEL_PATH.name
+        staged_json = temp / FREEZE_PATH.name
+        staged_markdown = temp / FREEZE_MARKDOWN_PATH.name
+        joblib.dump({
+            'baseline': baseline,
+            'final_model': selected['model'],
+            'baseline_threshold': baseline_threshold,
+            'final_threshold': selected['threshold'],
+            'selected_model': selected['name'],
+            'selected_model_configuration': freeze['selected_model_configuration'],
+        }, staged_model)
+        staged_json.write_text(json.dumps(freeze, indent=2) + '\n', encoding='utf-8')
+        staged_markdown.write_text(freeze_markdown, encoding='utf-8')
+        for staged, destination in zip(
+            (staged_model, staged_json, staged_markdown), paths
+        ):
+            if destination.exists():
+                raise FileExistsError(
+                    f'Refusing to overwrite freeze artifact: {destination}'
+                )
+            os.link(staged, destination)
+            staged.unlink()
+
     print(f'Frozen model: {MODEL_PATH}')
     print(f'Freeze record: {FREEZE_MARKDOWN_PATH}')
 
@@ -202,17 +292,39 @@ def develop():
 def final_evaluation():
     if not FREEZE_PATH.is_file() or not MODEL_PATH.is_file():
         raise FileNotFoundError(
-            'Run `python analysis.py --stage develop` first to create the frozen model and freeze record.'
+            'No approved root-level freeze artifacts found. Review validation results, '
+            'then run `python analysis.py --stage freeze --approve-freeze` after group approval.'
         )
-    if (Path.cwd() / 'test_predictions.csv').exists():
+    final_outputs = (
+        'metrics.csv',
+        'test_predictions.csv',
+        'bootstrap_ci.csv',
+        'by_device.csv',
+        'by_participant.csv',
+        'calibration.csv',
+        'naive_costs.csv',
+        'figures/confusion_test.png',
+    )
+    existing = [name for name in final_outputs if (ROOT / name).exists()]
+    if existing:
         raise FileExistsError(
-            'test_predictions.csv already exists; refusing to overwrite or rerun test evaluation.'
+            'Final output already exists; refusing to overwrite or rerun test evaluation: '
+            + ', '.join(existing)
         )
 
     freeze = json.loads(FREEZE_PATH.read_text(encoding='utf-8'))
+    if freeze.get('status') != 'group_approved_freeze':
+        raise ValueError('Freeze record is not an approved group freeze')
     if freeze.get('test_opened') is not False:
         raise ValueError('Freeze record is invalid: test_opened must be false before evaluation')
     artifacts = joblib.load(MODEL_PATH)
+    if (
+        artifacts.get('selected_model') != freeze.get('selected_model')
+        or artifacts.get('selected_model_configuration')
+        != freeze.get('selected_model_configuration')
+        or artifacts.get('final_threshold') != freeze.get('selected_threshold')
+    ):
+        raise ValueError('Frozen model artifact does not match the approved freeze record')
     _, validation, test = get_splits(load_data())
     evaluate.run_final(
         artifacts['baseline'],
@@ -230,14 +342,36 @@ def main():
     )
     parser.add_argument(
         '--stage',
-        choices=('develop', 'final'),
+        choices=('develop', 'freeze', 'final'),
         default='develop',
-        help='develop trains/selects and writes the freeze record; final evaluates test once',
+        help='develop reviews validation only; freeze writes approved artifacts; final evaluates test once',
+    )
+    parser.add_argument(
+        '--approve-freeze',
+        action='store_true',
+        help='Explicitly confirm group approval when using --stage freeze',
     )
     args = parser.parse_args()
     if args.stage == 'develop':
+        if args.approve_freeze:
+            parser.error('--approve-freeze is only valid with --stage freeze')
         develop()
+    elif args.stage == 'freeze':
+        if not args.approve_freeze:
+            parser.error('--stage freeze requires --approve-freeze after group approval')
+        train, _, baseline, selected, all_results, baseline_threshold = (
+            select_from_validation()
+        )
+        write_freeze(
+            train,
+            baseline,
+            selected,
+            all_results,
+            baseline_threshold,
+        )
     else:
+        if args.approve_freeze:
+            parser.error('--approve-freeze is only valid with --stage freeze')
         final_evaluation()
 
 

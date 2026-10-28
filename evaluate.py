@@ -8,7 +8,8 @@ from common import SEED, FEATURES, TARGET, cost_per_100
 
 METRIC_COLS = ['model','split','threshold','n','tp','fp','fn','tn','accuracy',
                'precision','recall','specificity','f1','flag_rate','cost_per_100']
-FIG_DIR = Path(__file__).resolve().parent / 'figures'
+ROOT = Path(__file__).resolve().parent
+FIG_DIR = ROOT / 'figures'
 
 
 # ---------- 1. Chỉ số ----------
@@ -186,14 +187,14 @@ def run_final(base, model, t_base, t_model, va, te):
         metrics_row('baseline',    'test',       te[TARGET], ptb, t_base),
         metrics_row('final_model', 'test',       te[TARGET], ptm, t_model)])[METRIC_COLS]
     check_metrics(metrics)
-    metrics.to_csv('metrics.csv', index=False)
+    metrics.to_csv(ROOT / 'metrics.csv', index=False)
 
     # test_predictions.csv (mô hình cuối)
     tp_df = pd.DataFrame({'segment_id': te['segment_id'], 'participant_id': te['participant_id'],
                           'y_true': te[TARGET], 'p_noisy': ptm,
                           'y_pred': (ptm >= t_model).astype(int), 'threshold': t_model})
     check_test_predictions(tp_df, te)
-    tp_df.to_csv('test_predictions.csv', index=False)
+    tp_df.to_csv(ROOT / 'test_predictions.csv', index=False)
 
     # Phân tích bổ sung
     boot = participant_bootstrap(te, {'baseline': (ptb, t_base), 'final_model': (ptm, t_model)})
@@ -201,11 +202,17 @@ def run_final(base, model, t_base, t_model, va, te):
     pd.DataFrame({'baseline_lo_hi': np.percentile(boot['baseline'], [2.5, 97.5]),
                   'final_lo_hi':    np.percentile(boot['final_model'], [2.5, 97.5]),
                   'diff_lo_hi':     np.percentile(diff, [2.5, 97.5])},
-                 index=['2.5%', '97.5%']).to_csv('bootstrap_ci.csv')
-    group_table(te, ptm, t_model, 'device_id', 'final_model').to_csv('by_device.csv', index=False)
-    person_table(te, ptm, t_model).to_csv('by_participant.csv')
-    calibration_table(te[TARGET].to_numpy(), ptm).to_csv('calibration.csv')
-    pd.Series(naive_costs(te)).to_csv('naive_costs.csv', header=['cost_per_100'])
+                 index=['2.5%', '97.5%']).to_csv(ROOT / 'bootstrap_ci.csv')
+    group_table(te, ptm, t_model, 'device_id', 'final_model').to_csv(
+        ROOT / 'by_device.csv', index=False
+    )
+    person_table(te, ptm, t_model).to_csv(ROOT / 'by_participant.csv')
+    calibration_table(te[TARGET].to_numpy(), ptm).to_csv(
+        ROOT / 'calibration.csv'
+    )
+    pd.Series(naive_costs(te)).to_csv(
+        ROOT / 'naive_costs.csv', header=['cost_per_100']
+    )
     plot_confusion(te[TARGET].to_numpy(), ptm, t_model, FIG_DIR / 'confusion_test.png')
 
 
