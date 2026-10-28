@@ -1,0 +1,12 @@
+feature,available_at_prediction,include,reason
+segment_id,yes,no,Unique identifier only; carries no signal-quality information
+participant_id,yes,no,Grouping and audit key; model must generalize to unseen participants
+device_id,yes,yes,Available at acquisition; segment summary
+duration_s,yes,no,Constant at 10 for every segment; no information
+missing_ratio,yes,yes,Available at acquisition; segment summary
+baseline_variation_mv,yes,yes,Available at acquisition; segment summary
+high_frequency_ratio,yes,yes,Available at acquisition; segment summary
+clipping_ratio,yes,yes,Available at acquisition; segment summary
+amplitude_scale_mv,yes,yes,Available at acquisition; segment summary
+review_note,no,no,Written after the quality judgment; perfectly separates the labels in training data
+quality_label,no,no,Prediction target; must not be used as an input
