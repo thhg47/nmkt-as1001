@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 import joblib
 import numpy as np
 from sklearn.compose import ColumnTransformer
+from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
@@ -36,15 +37,6 @@ LOGISTIC_C_VALUES = (0.01, 0.1, 1.0, 10.0, 100.0)
 LOGISTIC_MAX_ITER = 2000
 
 
-class PriorModel:
-    def __init__(self, positive_rate):
-        self.positive_rate = float(positive_rate)
-
-    def predict_proba(self, X):
-        p = np.full(len(X), self.positive_rate)
-        return np.column_stack((1 - p, p))
-
-
 def make_preprocessor():
     return ColumnTransformer([
         ('numeric', StandardScaler(), NUM),
@@ -54,7 +46,8 @@ def make_preprocessor():
 
 def fit_candidates(train, validation):
     y_train = train[TARGET]
-    baseline = PriorModel(y_train.mean())
+    baseline = DummyClassifier(strategy='prior')
+    baseline.fit(train[FEATURES], y_train)
     candidates = {}
 
     for c in LOGISTIC_C_VALUES:
