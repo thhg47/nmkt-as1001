@@ -65,7 +65,7 @@ def get_splits(df):
                  for s in ('train', 'validation', 'test'))
 
 
-# 2. HÀM CHÍNH CỦA NGƯỜI 4
+# 2. HÀM CHÍNH
 def choose_threshold(y_true, y_prob, max_flag_rate=FLAG_RATE_CAP):
     y_true = np.asarray(y_true)
     y_prob = np.asarray(y_prob, dtype=float)
