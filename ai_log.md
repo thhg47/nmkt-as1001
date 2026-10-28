@@ -44,3 +44,14 @@ This document records the transparent usage of generative AI tools (such as Gemi
   * *"Cách sử dụng DummyClassifier làm baseline và thử thêm Random Forest để so sánh?"*
   * *"Chọn siêu tham số C của Logistic Regression bằng tập validation như thế nào?"*
   * *"Cần thực hiện những bước nào để đóng băng (freeze) cấu hình mô hình trước khi đánh giá trên tập test?"*
+
+ ---
+
+ ## 4. Pham Van Bao Phong (ID: 2652465)
+
+* **Primary Focus:** Pipeline architecture design, rigorous baseline evaluation, metric integration, and comprehensive LaTeX report compilation on Overleaf.
+* **Key Prompts & Inquiries:**
+  * *"Phân tích cấu trúc file common.py và evaluate.py để đảm bảo tính đồng bộ của toàn bộ pipeline."*
+  * *"Hướng dẫn xây dựng pipeline huấn luyện chuẩn hóa, kết hợp StandardScaler và xử lý chống rò rỉ dữ liệu (data leakage)."*
+  * *"Cách tích hợp hàm chi phí bất đối xứng $C_{10} = 5\text{FN} + \text{FP}$ và kiểm soát ràng buộc flag rate $\le 20\%$ trên tập validation."*
+  * *"Cách xử lý và khắc phục các lỗi cú pháp LaTeX (như Escape ký tự đặc biệt, bảng biểu và định dạng trang) khi biên tập file report.pdf trên Overleaf."*
