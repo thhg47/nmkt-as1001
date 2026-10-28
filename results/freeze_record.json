@@ -1,0 +1,72 @@
+{
+  "status": "draft_not_approved_legacy",
+  "note": "Historical develop-stage output. It is not a group-approved freeze and is not accepted by the final evaluation stage.",
+  "frozen_at_utc": "2026-10-28T11:00:37.686012+00:00",
+  "selection_split": "validation",
+  "test_opened": false,
+  "threshold_rule": "p_noisy >= threshold",
+  "flag_rate_cap": 0.2,
+  "seed": 20261022,
+  "features": [
+    "missing_ratio",
+    "baseline_variation_mv",
+    "high_frequency_ratio",
+    "clipping_ratio",
+    "amplitude_scale_mv",
+    "device_id"
+  ],
+  "numeric_features": [
+    "missing_ratio",
+    "baseline_variation_mv",
+    "high_frequency_ratio",
+    "clipping_ratio",
+    "amplitude_scale_mv"
+  ],
+  "categorical_features": [
+    "device_id"
+  ],
+  "preprocessing": "StandardScaler for numeric; OneHotEncoder(handle_unknown=ignore) for device_id",
+  "selection_metric": "thresholds 0.01..0.99 in 0.01 steps; minimize cost_per_100 subject to flag_rate <= flag_rate_cap; threshold ties keep first; model ties prefer lower flag rate then model name",
+  "candidates": [
+    {
+      "model": "logistic_regression_C=10",
+      "threshold": 0.79,
+      "validation_cost_per_100": 34.0,
+      "validation_flag_rate": 0.195
+    },
+    {
+      "model": "logistic_regression_C=100",
+      "threshold": 0.79,
+      "validation_cost_per_100": 34.0,
+      "validation_flag_rate": 0.195
+    },
+    {
+      "model": "logistic_regression_C=1",
+      "threshold": 0.78,
+      "validation_cost_per_100": 34.5,
+      "validation_flag_rate": 0.2
+    },
+    {
+      "model": "logistic_regression_C=0.1",
+      "threshold": 0.78,
+      "validation_cost_per_100": 35.25,
+      "validation_flag_rate": 0.1925
+    },
+    {
+      "model": "logistic_regression_C=0.01",
+      "threshold": 0.69,
+      "validation_cost_per_100": 36.0,
+      "validation_flag_rate": 0.2
+    },
+    {
+      "model": "random_forest",
+      "threshold": 0.49,
+      "validation_cost_per_100": 37.5,
+      "validation_flag_rate": 0.2
+    }
+  ],
+  "selected_model": "logistic_regression_C=10",
+  "selected_threshold": 0.79,
+  "selected_validation_cost_per_100": 34.0,
+  "selected_validation_flag_rate": 0.195
+}

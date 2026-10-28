@@ -8,7 +8,8 @@ from common import SEED, FEATURES, TARGET, cost_per_100
 
 METRIC_COLS = ['model','split','threshold','n','tp','fp','fn','tn','accuracy',
                'precision','recall','specificity','f1','flag_rate','cost_per_100']
-FIG_DIR = Path(__file__).resolve().parent / 'figures'
+ROOT = Path(__file__).resolve().parent
+FIG_DIR = ROOT / 'figures'
 
 
 # ---------- 1. Chỉ số ----------
@@ -42,6 +43,33 @@ def metrics_row(model, split, y, p, t):
                 accuracy=(tp+tn)/n, precision=div(tp, tp+fp), recall=div(tp, tp+fn),
                 specificity=div(tn, tn+fp), f1=f1, flag_rate=(tp+fp)/n,
                 cost_per_100=100*(5*fn + fp)/n)
+
+
+def select_threshold(y, p, max_flag_rate):
+    """Choose the lowest-cost threshold meeting the workload cap."""
+    y = np.asarray(y)
+    p = np.asarray(p, dtype=float)
+    if not 0 <= max_flag_rate <= 1:
+        raise ValueError('max_flag_rate must be in [0, 1]')
+    if y.ndim != 1 or p.ndim != 1 or len(y) != len(p) or len(y) == 0:
+        raise ValueError('y and p must be non-empty one-dimensional arrays of equal length')
+    if not np.isin(y, [0, 1]).all():
+        raise ValueError('y must contain only binary labels 0 and 1')
+    if not np.isfinite(p).all() or ((p < 0) | (p > 1)).any():
+        raise ValueError('p must contain finite probabilities in [0, 1]')
+
+    candidates = np.round(np.arange(0.01, 1.00, 0.01), 2)
+    eligible = []
+    for threshold in candidates:
+        flag_rate = float((p >= threshold).mean())
+        if flag_rate <= max_flag_rate:
+            eligible.append((cost_per_100(y, p, float(threshold)), flag_rate, float(threshold)))
+    if not eligible:
+        raise ValueError('No threshold satisfies the requested flag-rate cap')
+
+    # Candidates are ascending; retaining the first minimum matches model_training.py.
+    cost, flag_rate, threshold = min(eligible, key=lambda row: row[0])
+    return {'threshold': threshold, 'cost_per_100': cost, 'flag_rate': flag_rate}
 
 
 # ---------- 2. Bootstrap theo người ----------
@@ -83,12 +111,14 @@ def group_table(df, p, t, by, model_name):
 def person_table(df, p, t):
     d = df.assign(pred=(np.asarray(p) >= t).astype(int))
     g = d.groupby('participant_id')
+    fn = ((d[TARGET] == 1) & (d['pred'] == 0)).groupby(d['participant_id']).sum()
+    fp = ((d[TARGET] == 0) & (d['pred'] == 1)).groupby(d['participant_id']).sum()
     out = pd.DataFrame({
         'devices': g['device_id'].agg(lambda s: ','.join(sorted(s.unique()))),
         'n': g.size(),
         'n_noisy': g[TARGET].sum(),
-        'fn': g.apply(lambda x: int(((x[TARGET]==1) & (x['pred']==0)).sum())),
-        'fp': g.apply(lambda x: int(((x[TARGET]==0) & (x['pred']==1)).sum())),
+        'fn': fn.astype(int),
+        'fp': fp.astype(int),
     })
     out['cost_per_100'] = 100*(5*out['fn'] + out['fp'])/out['n']
     return out.sort_values('cost_per_100', ascending=False)
@@ -157,14 +187,14 @@ def run_final(base, model, t_base, t_model, va, te):
         metrics_row('baseline',    'test',       te[TARGET], ptb, t_base),
         metrics_row('final_model', 'test',       te[TARGET], ptm, t_model)])[METRIC_COLS]
     check_metrics(metrics)
-    metrics.to_csv('metrics.csv', index=False)
+    metrics.to_csv(ROOT / 'metrics.csv', index=False)
 
     # test_predictions.csv (mô hình cuối)
     tp_df = pd.DataFrame({'segment_id': te['segment_id'], 'participant_id': te['participant_id'],
                           'y_true': te[TARGET], 'p_noisy': ptm,
                           'y_pred': (ptm >= t_model).astype(int), 'threshold': t_model})
     check_test_predictions(tp_df, te)
-    tp_df.to_csv('test_predictions.csv', index=False)
+    tp_df.to_csv(ROOT / 'test_predictions.csv', index=False)
 
     # Phân tích bổ sung
     boot = participant_bootstrap(te, {'baseline': (ptb, t_base), 'final_model': (ptm, t_model)})
@@ -172,9 +202,51 @@ def run_final(base, model, t_base, t_model, va, te):
     pd.DataFrame({'baseline_lo_hi': np.percentile(boot['baseline'], [2.5, 97.5]),
                   'final_lo_hi':    np.percentile(boot['final_model'], [2.5, 97.5]),
                   'diff_lo_hi':     np.percentile(diff, [2.5, 97.5])},
-                 index=['2.5%', '97.5%']).to_csv('bootstrap_ci.csv')
-    group_table(te, ptm, t_model, 'device_id', 'final_model').to_csv('by_device.csv', index=False)
-    person_table(te, ptm, t_model).to_csv('by_participant.csv')
-    calibration_table(te[TARGET].to_numpy(), ptm).to_csv('calibration.csv')
-    pd.Series(naive_costs(te)).to_csv('naive_costs.csv', header=['cost_per_100'])
+                 index=['2.5%', '97.5%']).to_csv(ROOT / 'bootstrap_ci.csv')
+    group_table(te, ptm, t_model, 'device_id', 'final_model').to_csv(
+        ROOT / 'by_device.csv', index=False
+    )
+    person_table(te, ptm, t_model).to_csv(ROOT / 'by_participant.csv')
+    calibration_table(te[TARGET].to_numpy(), ptm).to_csv(
+        ROOT / 'calibration.csv'
+    )
+    pd.Series(naive_costs(te)).to_csv(
+        ROOT / 'naive_costs.csv', header=['cost_per_100']
+    )
     plot_confusion(te[TARGET].to_numpy(), ptm, t_model, FIG_DIR / 'confusion_test.png')
+
+
+def participant_bootstrap_recall(df, p, t, B=1000, seed=SEED):
+    """CI 95% cho recall: lấy mẫu có hoàn lại NGƯỜI, giữ toàn bộ đoạn của mỗi người.
+    Mô hình và ngưỡng giữ nguyên. Replicate không có đoạn nhiễu: bỏ và đếm."""
+    if B <= 0:
+        raise ValueError('B must be greater than zero')
+    y = df[TARGET].to_numpy()
+    p = np.asarray(p, dtype=float)
+    pid = df['participant_id'].to_numpy()
+    if len(y) == 0 or len(p) != len(y):
+        raise ValueError('df and p must contain the same non-zero number of rows')
+    if not np.isin(y, [0, 1]).all():
+        raise ValueError('y must contain only binary labels 0 and 1')
+    if not np.isfinite(p).all() or ((p < 0) | (p > 1)).any():
+        raise ValueError('p must contain finite probabilities in [0, 1]')
+    if not 0 <= t <= 1:
+        raise ValueError('t must be a threshold in [0, 1]')
+    positive_count = int(y.sum())
+    if positive_count == 0:
+        raise ValueError('Recall is undefined when there are no positive labels')
+
+    people = np.unique(pid); idx_by = {k: np.where(pid == k)[0] for k in people}
+    rng = np.random.default_rng(seed); vals, skipped = [], 0
+    for _ in range(B):
+        idx = np.concatenate([idx_by[k] for k in rng.choice(people, size=len(people), replace=True)])
+        pos = int(y[idx].sum())
+        if pos == 0:
+            skipped += 1; continue
+        vals.append(((p[idx] >= t) & (y[idx] == 1)).sum() / pos)
+    if not vals:
+        raise ValueError('No bootstrap replicate contained a positive label')
+    vals = np.asarray(vals)
+    return dict(recall_point=float(((p >= t) & (y == 1)).sum() / positive_count),
+                ci_low=float(np.percentile(vals, 2.5)), ci_high=float(np.percentile(vals, 97.5)),
+                B=B, used=int(len(vals)), skipped_no_positives=skipped)
