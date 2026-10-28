@@ -72,12 +72,12 @@
 ## 4. Initial Decision - PHAM THANH HANG ID 2652680
 
 ### **1. Key Questions & Answers:**
-* **What does this assignment ask to predict?** It asks to predict whether an ECG segment is noisy (label 1 for noisy/review requested, label 0 for acceptable). This is signal quality assessment, not disease diagnosis.
-* **Which columns to use as features, which to drop, and why?** Only use features that are available at prediction time. You must drop the target variable, identifiers, constant fields, and post-review information.
-* **How to split data into train/validation/test?** Data is split by participants (based on `participant_split.json`): 30 participants for training (1,200 segments), 10 for validation (400 segments), and 10 for test (400 segments).
-* **What models to use, and what is the baseline?** Use a simple class-prior predictor as the baseline, and an interpretable candidate model like logistic regression or a shallow decision tree.
-* **How to choose the threshold? Are FN and FP equally costly?** FN and FP are not equally costly; missing a noisy segment (FN) is heavier than a false positive. The hypothetical cost is $C = 5\text{FN} + \text{FP}$. Choose the threshold using validation data while considering cost and a flag-rate limit of 0.20.
-* **What remains uncertain?** The labels are simulated judgments rather than clinically validated ground truth, and a threshold meeting validation constraints is not guaranteed to meet them on the test data.
+1. **What does this assignment ask to predict?** It asks to predict whether an ECG segment is noisy (label 1 for noisy/review requested, label 0 for acceptable). This is signal quality assessment, not disease diagnosis.
+2. **Which columns to use as features, which to drop, and why?** Only use features that are available at prediction time. You must drop the target variable, identifiers, constant fields, and post-review information.
+3. **How to split data into train/validation/test?** Data is split by participants (based on `participant_split.json`): 30 participants for training (1,200 segments), 10 for validation (400 segments), and 10 for test (400 segments).
+4. **What models to use, and what is the baseline?** Use a simple class-prior predictor as the baseline, and an interpretable candidate model like logistic regression or a shallow decision tree.
+5. **How to choose the threshold? Are FN and FP equally costly?** FN and FP are not equally costly; missing a noisy segment (FN) is heavier than a false positive. The hypothetical cost is $C = 5\text{FN} + \text{FP}$. Choose the threshold using validation data while considering cost and a flag-rate limit of 0.20.
+6. **What remains uncertain?** The labels are simulated judgments rather than clinically validated ground truth, and a threshold meeting validation constraints is not guaranteed to meet them on the test data.
 
 ---
 
